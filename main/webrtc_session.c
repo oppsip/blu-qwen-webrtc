@@ -28,6 +28,7 @@
 #include "esp_peer_default.h"
 
 #include "sco_bridge.h"
+#include "psram_task.h"
 
 static const char *TAG = "webrtc";
 
@@ -709,7 +710,17 @@ esp_err_t webrtc_session_run(webrtc_session_t *session)
 
     /* Pin to CPU1: Opus+mSBC+SRTP keep IDLE0 starved otherwise, which broke
      * the SCO link mid-call (task_wdt + BT xmit Q overflow -> phone hangup). */
-    if (xTaskCreatePinnedToCore(peer_task, "peer_loop", 24576, &s_ctx, 5, NULL, 1) != pdPASS) {
+    static StackType_t *s_peer_stack;
+    static StaticTask_t s_peer_tcb;
+    static TaskHandle_t s_peer_handle;
+    /* The previous peer_loop (static TCB) must be fully reaped by idle before reuse. */
+    for (int i = 0; i < 50 && s_peer_handle != NULL &&
+                    eTaskGetState(s_peer_handle) != eDeleted; i++) {
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    s_peer_handle = psram_task_create(peer_task, "peer_loop", 24576, &s_ctx, 5, 1,
+                                      &s_peer_stack, &s_peer_tcb);
+    if (s_peer_handle == NULL) {
         err = ESP_ERR_NO_MEM;
         goto cleanup;
     }

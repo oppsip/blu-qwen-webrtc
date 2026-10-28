@@ -31,6 +31,7 @@
 #include "config_manager.h"
 #include "ble_config_server.h"
 #include "sco_bridge.h"
+#include "psram_task.h"
 #include "webrtc_session.h"
 
 #ifdef CONFIG_GW_NET_ETHERNET
@@ -93,8 +94,11 @@ static bool check_config_trigger(void)
     return true;
 }
 
+static bool s_ble_config_attempted;   /* BLE controller already in use this boot */
+
 static void run_ble_config_mode(const char *bt_name)
 {
+    s_ble_config_attempted = true;
     ESP_LOGI(TAG, "=== BLE Config Mode ===");
     ESP_LOGI(TAG, "Scan for \"%s%s\" (BLE FFF0 service) and send get_ui/set_config",
              bt_name[0] ? bt_name : CONFIG_GW_BLE_ADV_NAME,
@@ -181,9 +185,23 @@ static void wifi_start(void)
 
 static void bt_start(void)
 {
+    /* BLE is only used by the config session (separate boot mode that ends
+     * in a reboot). In normal operation run the controller classic-only and
+     * hand its BLE memory back to the heap; this is permanent until reboot. */
+    esp_bt_mode_t mode = ESP_BT_MODE_CLASSIC_BT;
+    if (s_ble_config_attempted) {
+        mode = ESP_BT_MODE_BTDM;   /* config init failed midway: keep the old behaviour */
+    } else {
+        ESP_ERROR_CHECK(esp_bt_mem_release(ESP_BT_MODE_BLE));
+        log_heap("ble mem released");
+    }
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+    bt_cfg.mode = mode;   /* enable() must use the mode init() was given */
+    if (mode == ESP_BT_MODE_CLASSIC_BT) {
+        bt_cfg.ble_max_conn = 0;
+    }
     ESP_ERROR_CHECK(esp_bt_controller_init(&bt_cfg));
-    ESP_ERROR_CHECK(esp_bt_controller_enable(ESP_BT_MODE_BTDM));
+    ESP_ERROR_CHECK(esp_bt_controller_enable(mode));
     log_heap("bt ctrl");
     ESP_ERROR_CHECK(esp_bluedroid_init());
     ESP_ERROR_CHECK(esp_bluedroid_enable());
@@ -365,5 +383,12 @@ void app_main(void)
 
     xTaskCreate(stats_task, "stats", 3072, NULL, 1, NULL);
     /* Pin to CPU1 so wifi/bluedroid/tcpip keep CPU0 (see peer_loop note). */
-    xTaskCreatePinnedToCore(session_task, "session", 40960, NULL, 5, NULL, 1);
+    {
+        static StackType_t *s_session_stack;
+        static StaticTask_t s_session_tcb;
+        if (psram_task_create(session_task, "session", 40960, NULL, 5, 1,
+                              &s_session_stack, &s_session_tcb) == NULL) {
+            ESP_LOGE(TAG, "session task create failed");
+        }
+    }
 }
