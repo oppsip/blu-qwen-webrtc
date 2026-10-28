@@ -1,0 +1,6 @@
+dependencies:
+  espressif/esp_peer: "^1.5.7"
+  espressif/esp_audio_codec: "^2.6.2"
+  espressif/cjson: "^1.7.19"
+  idf:
+    version: ">=6.0"

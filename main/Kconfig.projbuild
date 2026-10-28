@@ -1,0 +1,100 @@
+menu "Gateway Test Configuration"
+
+    config GW_WIFI_SSID
+        string "WiFi SSID"
+        default ""
+        help
+            Station SSID for the P2 test build. Keep the password out of
+            sdkconfig.defaults; set it in the local (ignored) sdkconfig.
+
+    config GW_WIFI_PASSWORD
+        string "WiFi password"
+        default ""
+
+    config GW_RTC_BASE_URL
+        string "Gateway base URL"
+        default "https://audio.zhonglele.top"
+        help
+            Origin of the Qwen gateway, used for WHIP signaling.
+
+    config GW_RTC_TOKEN
+        string "Gateway access token"
+        default ""
+        help
+            Bearer token for the WebRTC endpoint. Set in the local (git-ignored)
+            sdkconfig, not in sdkconfig.defaults.
+
+    config GW_RTC_SESSION_SECONDS
+        int "Session run seconds per cycle"
+        default 60
+
+    config GW_RTC_PUBLIC_IP
+        string "Gateway public IP for answer candidate rewrite"
+        default "39.105.193.82"
+        help
+            The gateway runs behind a 1:1 NAT and its WHIP answer carries
+            LAN-address host candidates. The firmware rewrites every IPv4
+            UDP host candidate to this address before handing the answer to
+            esp_peer. Also keeps the remote candidate count under the
+            esp_peer ICE agent limit (10).
+
+    config GW_BT_PEER_ADDR
+        string "Bonded phone BD address for the HFP client (aa:bb:cc:dd:ee:ff)"
+        default ""
+        help
+            When set, the device initiates esp_hf_client_connect() to this
+            address (triggers pairing if not bonded). Leave empty to reuse
+            the peer_addr stored in NVS by the production firmware, or to
+            rely on the phone auto-connecting to the already-bonded device.
+
+    config GW_BT_AUTO_ANSWER
+        bool "Auto-answer incoming calls"
+        default y
+        help
+            Answer an incoming call about 1.5 s after the ring indicator
+            arrives, so manual call testing does not need a second human
+            action. Disable to answer calls on the phone itself.
+
+    config GW_BT_DEVICE_NAME
+        string "Bluetooth device name (HFP broadcast name)"
+        default "blu-qwen-webrtc"
+        help
+            Overridable at runtime through the BLE config session
+            (namespace "bt", key "name").
+
+    config GW_CFG_TRIGGER_GPIO
+        int "Config mode trigger GPIO (held low at power-on"
+        default 13
+        range 0 48
+        help
+            Hold this pin low at reset to enter the BLE configuration mode
+            (au_gw-compatible). Used GPIOs on this board: 0/4/5/18/23
+            (Ethernet), 16/17 (PSRAM), strapping pins 2/12/15 are safe but
+            check the wiring before changing.
+
+    config GW_BLE_ADV_NAME
+        string "BLE config advertising name"
+        default "QWA-CFG"
+        help
+            Name broadcast by the BLE config server when no Bluetooth device
+            name is set (otherwise "<device name>-CFG").
+
+    config GW_WIFI_FALLBACK_SEC
+        int "Ethernet wait before WiFi fallback (seconds)"
+        default 10
+        range 0 600
+        help
+            With the Ethernet build (GW_NET_ETHERNET) the wired link is
+            attempted first; if it has no IP after this many seconds and a
+            WiFi SSID is configured (NVS or menuconfig), WiFi is started.
+
+    config GW_NET_ETHERNET
+        bool "Use wired Ethernet (LAN8720 RMII) instead of WiFi"
+        default n
+        help
+            Brings up the LAN8720 PHY (PHY addr 1, MDC 23, MDIO 18, reset 5,
+            ext 50 MHz RMII clock on GPIO0, clock-select GPIO4) via DHCP and
+            skips WiFi entirely. Use to A/B test BT/wifi coexistence packet
+            loss against a fully wired downlink.
+
+endmenu
